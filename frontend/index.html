@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Socket.IO Client View</title>
+  </head>
+  <body>
+    <h1>Socket.IO Client</h1>
+    <div id="status">Connecting...</div>
+    <div>
+      <input id="chatInput" type="text" placeholder="Type your message..." />
+      <button id="chatSendBtn">Send</button>
+    </div>
+    <div id="messages"></div>
+
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script src="dist/view.js"></script>
+
+    <!-- ...existing code... -->
+    <style>
+      #messages {
+        border: 1px solid #ccc;
+        padding: 10px;
+        height: 200px;
+        overflow-y: auto;
+        background: #f9f9f9;
+        margin-top: 10px;
+      }
+      #messages div {
+        margin-bottom: 5px;
+        padding: 4px 8px;
+        background: #e1eaff;
+        border-radius: 4px;
+      }
+    </style>
+  </body>
+</html>
