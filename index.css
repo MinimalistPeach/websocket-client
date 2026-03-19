@@ -1,0 +1,15 @@
+#snake {
+  stroke: black;
+}
+
+#userid {
+  font-size: 20px;
+  font-weight: bold;
+  position: absolute;
+}
+
+#userid2 {
+  font-size: 20px;
+  font-weight: bold;
+  position: absolute;
+}
