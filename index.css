@@ -14,12 +14,7 @@
   position: absolute;
 }
 
-#apple_container {
+#objects {
   width: 100%;
   height: 100%;
-}
-
-.objects {
-  width: 100%;
-  height: auto;
 }
