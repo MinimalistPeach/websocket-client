@@ -14,6 +14,21 @@ socket.on("disconnect", () => {
     console.log("Disconnected");
 });
 
+socket.on("send_apple_data", (data: { id: string, pos: { x: number, y: number } }[]) => {
+    console.log("Received apple data:", data);
+    const appleContainer = document.getElementById("apple_container")!;
+    appleContainer.innerHTML = "";
+
+    data.forEach(apple => {
+        const appleElement = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        appleElement.setAttribute("cx", apple.pos.x.toString());
+        appleElement.setAttribute("cy", apple.pos.y.toString());
+        appleElement.setAttribute("r", "10");
+        appleElement.setAttribute("fill", "red");
+        appleContainer.appendChild(appleElement);
+    });
+});
+
 socket.on("send_player_data", (data: { _id: string, _color: string, _pos: { x: number, y: number } }[]) => {
     console.log("Received player data:", data);
     const player = data.find(p => p._id === playerId);
