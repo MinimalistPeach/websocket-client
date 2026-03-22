@@ -1,11 +1,14 @@
 {
   "compilerOptions": {
     "target": "es6",
-    "module": "none",
+    "module": "commonjs", 
+    "moduleResolution": "node", 
     "strict": true,
     "esModuleInterop": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "ignoreDeprecations": "5.0"
   },
-  "include": ["*.ts"],
-  "allowImportingTsExtensions": true
+  "include": [
+    "*.ts"
+  ]
 }

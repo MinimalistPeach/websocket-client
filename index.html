@@ -1,26 +1,71 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Table Grid Snake Game</title>
+    <script src="node_modules/socket.io-client/dist/socket.io.js"></script>
+    <script src="dist/client.js" defer></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        background-color: #111;
+        color: white;
+        display: flex;
+        gap: 30px;
+        padding: 20px;
+      }
 
-<head>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Snake game</title>
-  <script src="node_modules/socket.io-client/dist/socket.io.js"></script>
-  <script src="dist/client.js"></script>
-  <style>
+      /* Table Grid Styling */
+      table {
+        border-collapse: collapse;
+        background-color: #222;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+      }
 
-  </style>
-</head>
+      td {
+        width: 20px; /* Cell size */
+        height: 20px;
+        border: 1px solid #333; /* Grid lines */
+        padding: 0;
+      }
 
-<body>
-  <div id="objects">
-    <label id="userid" for="snake" style="position: absolute">...</label>
-    <div id="snake" style="width:50px; height:50px; background-color:blue; position: absolute"></div>
+      /* Apple Styling */
+      .apple {
+        background-color: red;
+        border-radius: 50%;
+        transform: scale(
+          0.8
+        ); /* Makes the apple slightly smaller than the cell */
+      }
 
-    <label id="userid2" for="snake2" style="position: absolute">...</label>
-    <div id="snake2" style="width:50px; height:50px; background-color:blue; position: absolute"></div>
+      #scoreboard {
+        background-color: #333;
+        padding: 20px;
+        border-radius: 8px;
+        min-width: 200px;
+      }
 
-  </div>
+      ul {
+        list-style-type: none;
+        padding: 0;
+      }
 
-</body>
+      li {
+        margin-bottom: 10px;
+        font-weight: bold;
+      }
+    </style>
+  </head>
 
+  <body>
+    <div id="board-container"></div>
+
+    <div id="scoreboard">
+      <h3>Connected Players</h3>
+      <ul id="player-list">
+        <li>Waiting for players...</li>
+      </ul>
+    </div>
+  </body>
 </html>
