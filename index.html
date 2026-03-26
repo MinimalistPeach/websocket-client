@@ -6,56 +6,7 @@
     <title>Table Grid Snake Game</title>
     <script src="node_modules/socket.io-client/dist/socket.io.js"></script>
     <script src="dist/client.js" defer></script>
-    <style>
-      body {
-        font-family: sans-serif;
-        background-color: #111;
-        color: white;
-        display: flex;
-        gap: 30px;
-        padding: 20px;
-      }
-
-      /* Table Grid Styling */
-      table {
-        border-collapse: collapse;
-        background-color: #222;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-      }
-
-      td {
-        width: 20px; /* Cell size */
-        height: 20px;
-        border: 1px solid #333; /* Grid lines */
-        padding: 0;
-      }
-
-      /* Apple Styling */
-      .apple {
-        background-color: red;
-        border-radius: 50%;
-        transform: scale(
-          0.8
-        ); /* Makes the apple slightly smaller than the cell */
-      }
-
-      #scoreboard {
-        background-color: #333;
-        padding: 20px;
-        border-radius: 8px;
-        min-width: 200px;
-      }
-
-      ul {
-        list-style-type: none;
-        padding: 0;
-      }
-
-      li {
-        margin-bottom: 10px;
-        font-weight: bold;
-      }
-    </style>
+    <link rel="stylesheet" href="index.css" />
   </head>
 
   <body>
