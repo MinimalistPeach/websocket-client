@@ -49,8 +49,10 @@ function getGridCoords(pixelX: number, pixelY: number) {
 }
 
 function getDistance(p1: { x: number, y: number }, p2: { x: number, y: number }) {
-  const dx = p1.x - p2.x;
-  const dy = p1.y - p2.y;
+  let dx = Math.abs(p1.x - p2.x);
+  let dy = Math.abs(p1.y - p2.y);
+  if (dx > BOARD_WIDTH / 2) dx = BOARD_WIDTH - dx;
+  if (dy > BOARD_HEIGHT / 2) dy = BOARD_HEIGHT - dy;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
@@ -98,7 +100,7 @@ function render() {
 
     const li = document.createElement("li");
     li.style.color = player._color || "blue";
-    const lengthText = player.length != null ? ` (Length: ${player.length - 1})` : "";
+    const lengthText = player.length != null ? ` (Length: ${player.length})` : "";
     li.textContent = `Player: ${player._id.substring(0, 5)}... ${lengthText}`;
     scoreboard?.appendChild(li);
   });
@@ -108,8 +110,8 @@ socket.on("connect", () => {
   console.log("Connected: " + socket.id);
   playerId = socket.id;
   socket.emit("window_details", {
-    width: window.innerWidth,
-    height: window.innerHeight,
+    width: BOARD_WIDTH,
+    height: BOARD_HEIGHT,
   });
 });
 
@@ -185,6 +187,9 @@ socket.on("player_hit", (data: { crashed: string; crasher: string; length: numbe
 });
 
 // AI movement toward the closest apple with avoidance
+const oppositeDir: Record<string, string> = { up: 'down', down: 'up', left: 'right', right: 'left' };
+let currentDirection = '';
+
 setInterval(() => {
   const me = players.find((p) => p._id === playerId);
   if (!me || apples.length === 0) return;
@@ -204,21 +209,25 @@ setInterval(() => {
   let vx = 0;
   let vy = 0;
 
-  // Vector to apple
-  const dx = closestApple.pos.x - me.pos.x;
-  const dy = closestApple.pos.y - me.pos.y;
+  // Vector to apple (shortest path accounting for wrap-around)
+  let dx = closestApple.pos.x - me.pos.x;
+  let dy = closestApple.pos.y - me.pos.y;
+  if (Math.abs(dx) > BOARD_WIDTH / 2) dx = dx > 0 ? dx - BOARD_WIDTH : dx + BOARD_WIDTH;
+  if (Math.abs(dy) > BOARD_HEIGHT / 2) dy = dy > 0 ? dy - BOARD_HEIGHT : dy + BOARD_HEIGHT;
   const appleDist = Math.sqrt(dx * dx + dy * dy);
   if (appleDist > 0) {
     vx += dx / appleDist;
     vy += dy / appleDist;
   }
 
-  // Avoidance vectors
+  // Avoidance vectors (wrap-aware)
   const AVOID_DISTANCE = 120;
   players.forEach((other) => {
     if (other._id === playerId) return;
-    const odx = me.pos.x - other.pos.x;
-    const ody = me.pos.y - other.pos.y;
+    let odx = me.pos.x - other.pos.x;
+    let ody = me.pos.y - other.pos.y;
+    if (Math.abs(odx) > BOARD_WIDTH / 2) odx = odx > 0 ? odx - BOARD_WIDTH : odx + BOARD_WIDTH;
+    if (Math.abs(ody) > BOARD_HEIGHT / 2) ody = ody > 0 ? ody - BOARD_HEIGHT : ody + BOARD_HEIGHT;
     const otherDist = Math.sqrt(odx * odx + ody * ody);
     if (otherDist > 0 && otherDist < AVOID_DISTANCE) {
       const avoidIntensity = (AVOID_DISTANCE - otherDist) / AVOID_DISTANCE;
@@ -227,13 +236,28 @@ setInterval(() => {
     }
   });
 
-  // Normalize and choose direction
-  const vlen = Math.sqrt(vx * vx + vy * vy);
-  if (vlen > 0) {
-    const nextDirection = Math.abs(vx) > Math.abs(vy)
-      ? (vx > 0 ? "right" : "left")
-      : (vy > 0 ? "down" : "up");
-    socket.emit("move_player", { direction: nextDirection });
-  }
+  // Normalize and choose direction — never stop, always pick a valid non-reversing direction
+  const allDirs = ['up', 'down', 'left', 'right'];
+  const candidates: string[] = [];
+
+  // Primary: axis with strongest signal
+  const primary = Math.abs(vx) > Math.abs(vy)
+    ? (vx > 0 ? 'right' : 'left')
+    : (vy > 0 ? 'down' : 'up');
+  // Secondary: the other axis
+  const secondary = Math.abs(vx) <= Math.abs(vy)
+    ? (vx > 0 ? 'right' : 'left')
+    : (vy > 0 ? 'down' : 'up');
+
+  candidates.push(primary, secondary);
+  // Append remaining directions as last-resort (excluding reverse)
+  allDirs.forEach(d => { if (!candidates.includes(d)) candidates.push(d); });
+
+  const blocked = currentDirection ? oppositeDir[currentDirection] : '';
+  const nextDirection = candidates.find(d => d !== blocked) ?? currentDirection;
+  if (!nextDirection) return;
+
+  currentDirection = nextDirection;
+  socket.emit('move_player', { direction: nextDirection });
 }, 1000 / 20);
 
