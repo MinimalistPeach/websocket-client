@@ -58,6 +58,7 @@ function draw() {
       player.body.forEach((segment: { x: number; y: number }, idx: number) => {
           const next = player.body[idx + 1];
 
+          ctx.beginPath();
           ctx.fillStyle = player._color || "blue";
           ctx.arc(segment.x, segment.y, radius, 0, Math.PI * 2);
           ctx.fill();
@@ -339,7 +340,9 @@ setInterval(() => {
     }
 
     ['up', 'down', 'left', 'right'].forEach(d => {
-        if (!candidates.includes(d)) candidates.push(d);
+        if (candidates.indexOf(d) === -1) {
+            candidates.push(d);
+        }
     });
 
     const forbidden = currentDirection ? oppositeDir[currentDirection] : '';
