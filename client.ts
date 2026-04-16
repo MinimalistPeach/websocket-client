@@ -352,5 +352,5 @@ setInterval(() => {
         currentDirection = nextDirection;
         socket.emit('move_player', { direction: nextDirection });
     }
-}, 1000 / 60);
+}, 1000 / 20);
 
