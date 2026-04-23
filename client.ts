@@ -1,28 +1,44 @@
 declare const io: any;
 const socket = io("http://localhost:3000");
 
+const SETTINGS = {
+    BOARD_WIDTH: 800,
+    BOARD_HEIGHT: 800,
+    CELL_SIZE: 40,
+    TICK_RATE: 10
+};
+
 const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
-
-const CELL_SIZE = 40;
-const COLS = 20;
-const ROWS = 20;
-
-const BOARD_WIDTH = COLS * CELL_SIZE;
-const BOARD_HEIGHT = ROWS * CELL_SIZE;
-
-canvas.width = BOARD_WIDTH;
-canvas.height = BOARD_HEIGHT;
+canvas.width = SETTINGS.BOARD_WIDTH;
+canvas.height = SETTINGS.BOARD_HEIGHT;
 
 let playerId: string = "";
-let apples: { id: string; pos: { x: number; y: number } }[] = [];
+let apples: any[] = [];
 let players: any[] = [];
+let currentDirection: string = '';
+const oppositeDir: Record<string, string> = { up: 'down', down: 'up', left: 'right', right: 'left' };
 
 function draw() {
     if (!ctx) return;
 
     drawBackground();
+    drawApples();
+    drawPlayers();
 
+    updateScoreboard();
+}
+
+function drawBackground() {
+    for (let row = 0; row < SETTINGS.BOARD_HEIGHT / SETTINGS.CELL_SIZE; row++) {
+        for (let col = 0; col < SETTINGS.BOARD_WIDTH / SETTINGS.CELL_SIZE; col++) {
+            ctx.fillStyle = (row + col) % 2 === 0 ? "#AAD751" : "#A2D149";
+            ctx.fillRect(col * SETTINGS.CELL_SIZE, row * SETTINGS.CELL_SIZE, SETTINGS.CELL_SIZE, SETTINGS.CELL_SIZE);
+        }
+    }
+}
+
+function drawApples() {
     apples.forEach(apple => {
         const appleRadius = 16;
 
@@ -49,162 +65,68 @@ function draw() {
         ctx.ellipse(apple.pos.x + 6, apple.pos.y - appleRadius - 2, 6, 3, Math.PI / 4, 0, Math.PI * 2);
         ctx.fill();
     });
+}
 
+function drawPlayers() {
     players.forEach(player => {
-      if (!player.body || player.body.length === 0) return;
+        if (!player.body || player.body.length === 0) return;
 
-      const radius = (CELL_SIZE / 2) - 5;
+        const color = player._color || "blue";
+        const radius = (SETTINGS.CELL_SIZE / 2) - 5;
 
-      player.body.forEach((segment: { x: number; y: number }, idx: number) => {
-          const next = player.body[idx + 1];
+        player.body.forEach((segment: any, idx: number) => {
+            const next = player.body[idx + 1];
 
-          ctx.beginPath();
-          ctx.fillStyle = player._color || "blue";
-          ctx.arc(segment.x, segment.y, radius, 0, Math.PI * 2);
-          ctx.fill();
+            ctx.beginPath();
+            ctx.fillStyle = color;
+            ctx.arc(segment.x, segment.y, radius, 0, Math.PI * 2);
+            ctx.fill();
 
-          if (next) {
-              const dx = Math.abs(segment.x - next.x);
-              const dy = Math.abs(segment.y - next.y);
+            if (next) {
+                const dx = Math.abs(segment.x - next.x);
+                const dy = Math.abs(segment.y - next.y);
+                if (dx < SETTINGS.CELL_SIZE * 1.5 && dy < SETTINGS.CELL_SIZE * 1.5) {
+                    ctx.beginPath();
+                    ctx.lineWidth = radius * 2;
+                    ctx.lineCap = "round";
+                    ctx.strokeStyle = color;
+                    ctx.moveTo(segment.x, segment.y);
+                    ctx.lineTo(next.x, next.y);
+                    ctx.stroke();
+                }
+            }
 
-              if (dx < CELL_SIZE * 2 && dy < CELL_SIZE * 2) {
-                  ctx.beginPath();
-                  ctx.lineWidth = radius * 2;
-                  ctx.lineCap = "round";
-                  ctx.strokeStyle = player._color || "blue";
-                  ctx.moveTo(segment.x, segment.y);
-                  ctx.lineTo(next.x, next.y);
-                  ctx.stroke();
-              }
-          }
-
-          if (idx === 0) {
-              drawEyes(segment.x, segment.y, player.direction);
-          }
+            if (idx === 0) {
+                drawEyes(segment.x, segment.y, player.direction);
+            }
         });
     });
-
-    updateScoreboard();
-}
-
-function drawBackground() {
-    ctx.fillStyle = "#A2D149";
-    ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
-
-    ctx.fillStyle = "#AAD751";
-    
-    for (let row = 0; row < BOARD_HEIGHT / CELL_SIZE; row++) {
-        for (let col = 0; col < BOARD_WIDTH / CELL_SIZE; col++) {
-            if ((row + col) % 2 === 0) {
-                ctx.fillRect(col * CELL_SIZE, row * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-            }
-        }
-    }
-}
-
-function drawSnake(body: { x: number; y: number }[], color: string, radius: number) {
-    if (body.length < 2) {
-        ctx.beginPath();
-        ctx.fillStyle = color;
-        ctx.arc(body[0].x, body[0].y, radius, 0, Math.PI * 2);
-        ctx.fill();
-        return;
-    }
-
-    ctx.beginPath();
-    ctx.fillStyle = color;
-    ctx.lineWidth = 1;
-
-    const head = body[0];
-    const tail = body[body.length - 1];
-
-    const dxHead = head.x - body[1].x;
-    const dyHead = head.y - body[1].y;
-    const angleHead = Math.atan2(dyHead, dxHead);
-
-    ctx.moveTo(
-        head.x + Math.cos(angleHead + Math.PI / 2) * radius,
-        head.y + Math.sin(angleHead + Math.PI / 2) * radius
-    );
-
-    ctx.arc(head.x, head.y, radius, angleHead + Math.PI / 2, angleHead - Math.PI / 2);
-
-    for (let i = 1; i < body.length - 1; i++) {
-        const p1 = body[i];
-        const p2 = body[i + 1];
-        
-        const dx = p1.x - p2.x;
-        const dy = p1.y - p2.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist === 0) continue;
-
-        const perpX = (-dy / dist) * radius;
-        const perpY = (dx / dist) * radius;
-
-        ctx.lineTo(p1.x + perpX, p1.y + perpY);
-    }
-
-    const dxTail = tail.x - body[body.length - 2].x;
-    const dyTail = tail.y - body[body.length - 2].y;
-    const angleTail = Math.atan2(dyTail, dxTail);
-
-    ctx.arc(tail.x, tail.y, radius, angleTail + Math.PI / 2, angleTail - Math.PI / 2, true);
-
-    for (let i = body.length - 2; i > 0; i--) {
-        const p1 = body[i];
-        const p2 = body[i - 1];
-
-        const dx = p1.x - p2.x;
-        const dy = p1.y - p2.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist === 0) continue;
-
-        const perpX = (dy / dist) * radius;
-        const perpY = (-dx / dist) * radius;
-
-        ctx.lineTo(p1.x + perpX, p1.y + perpY);
-    }
-
-    ctx.closePath();
-    ctx.fill();
 }
 
 function drawEyes(x: number, y: number, dir: string) {
     const eyeSize = 5;
     const eyeSpacing = 9;
+    let e1 = { x: 0, y: 0 }, e2 = { x: 0, y: 0 };
 
-    let eyeX1, eyeY1, eyeX2, eyeY2;
-
-    const cleanDir = dir ? dir.toLowerCase().trim() : '';
-
-    if (cleanDir === 'up' || cleanDir === 'down') {
-        eyeX1 = x - eyeSpacing; 
-        eyeX2 = x + eyeSpacing;
-        eyeY1 = y; 
-        eyeY2 = y; 
-    } 
-    else if (cleanDir === 'left' || cleanDir === 'right') {
-        eyeX1 = x; 
-        eyeX2 = x;
-        eyeY1 = y - eyeSpacing; 
-        eyeY2 = y + eyeSpacing;
-    }
-    else {
-        eyeX1 = x - eyeSpacing; eyeX2 = x + eyeSpacing;
-        eyeY1 = y; eyeY2 = y;
+    if (dir === 'up' || dir === 'down') {
+        e1 = { x: x - eyeSpacing, y: y };
+        e2 = { x: x + eyeSpacing, y: y };
+    } else {
+        e1 = { x: x, y: y - eyeSpacing };
+        e2 = { x: x, y: y + eyeSpacing };
     }
 
     ctx.fillStyle = "white";
-    ctx.beginPath();
-    ctx.arc(eyeX1, eyeY1, eyeSize, 0, Math.PI * 2);
-    ctx.arc(eyeX2, eyeY2, eyeSize, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "black";
-    ctx.beginPath();
-    ctx.arc(eyeX1, eyeY1, eyeSize / 2, 0, Math.PI * 2);
-    ctx.arc(eyeX2, eyeY2, eyeSize / 2, 0, Math.PI * 2);
-    ctx.fill();
+    [e1, e2].forEach(e => {
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, eyeSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "black";
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, eyeSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "white";
+    });
 }
 
 function updateScoreboard() {
@@ -220,49 +142,27 @@ function updateScoreboard() {
     });
 }
 
-function getDistance(p1: { x: number, y: number }, p2: { x: number, y: number }) {
-    let dx = Math.abs(p1.x - p2.x);
-    let dy = Math.abs(p1.y - p2.y);
-    
-    if (dx > BOARD_WIDTH / 2) dx = BOARD_WIDTH - dx;
-    if (dy > BOARD_HEIGHT / 2) dy = BOARD_HEIGHT - dy;
-    
-    return Math.sqrt(dx * dx + dy * dy);
-}
-
-
-socket.on("connect", () => {
-    playerId = socket.id;
-    socket.emit("window_details", { width: BOARD_WIDTH, height: BOARD_HEIGHT });
-});
-
-socket.on("send_apple_data", (data: any) => {
-    apples = data;
-});
-
-socket.on("send_player_data", (data: any[]) => {
+const sysncPlayerData = (data: any[]) => {
     players = data.map((p) => ({
         _id: p._id || p.id,
         _color: p._color || p.color,
         pos: p._pos || p.pos,
         body: p._body || p.body,
         length: p._length || p.length,
+        direction: p._direction || p.direction
     }));
-    draw();
+}
+
+socket.on("send_player_data", sysncPlayerData);
+
+socket.on("player_moved", sysncPlayerData);
+
+socket.on("connect", () => {
+    playerId = socket.id;
 });
 
-socket.on("player_moved", (data: any[]) => {
-    players = data.map((movedData) => {
-        const existing = players.find((p) => p._id === movedData.id);
-        return {
-            _id: movedData.id,
-            _color: existing ? existing._color : "blue",
-            pos: movedData.pos,
-            body: movedData.body,
-            length: movedData.length,
-            direction: movedData.direction
-        };
-    });
+socket.on("send_apple_data", (data: any) => {
+    apples = data;
 });
 
 function gameLoop() {
@@ -272,9 +172,6 @@ function gameLoop() {
 
 gameLoop();
 
-const oppositeDir: Record<string, string> = { up: 'down', down: 'up', left: 'right', right: 'left' };
-let currentDirection = '';
-
 setInterval(() => {
     const me = players.find((p) => p._id === playerId);
     if (!me || !me.pos || apples.length === 0) return;
@@ -282,75 +179,27 @@ setInterval(() => {
     let closestApple = apples[0];
     let bestDist = Infinity;
     
-    apples.forEach((apple) => {
-        const d = getDistance(me.pos, apple.pos);
+    apples.forEach((a) => {
+        const d = Math.hypot(me.pos.x - a.pos.x, me.pos.y - a.pos.y);
         if (d < bestDist) {
             bestDist = d;
-            closestApple = apple;
+            closestApple = a;
         }
     });
 
-    let vx = 0;
-    let vy = 0;
+    let nextDir = currentDirection;
+    const dx = closestApple.pos.x - me.pos.x;
+    const dy = closestApple.pos.y - me.pos.y;
 
-    let dx = closestApple.pos.x - me.pos.x;
-    if (Math.abs(dx) > BOARD_WIDTH / 2) {
-        dx = dx > 0 ? dx - BOARD_WIDTH : dx + BOARD_WIDTH;
-    }
-
-    let dy = closestApple.pos.y - me.pos.y;
-    if (Math.abs(dy) > BOARD_HEIGHT / 2) {
-        dy = dy > 0 ? dy - BOARD_HEIGHT : dy + BOARD_HEIGHT;
-    }
-
-    const distToApple = Math.sqrt(dx * dx + dy * dy);
-    if (distToApple > 0) {
-        vx += dx / distToApple;
-        vy += dy / distToApple;
-    }
-
-    const AVOID_DISTANCE = 160;
-    players.forEach((other) => {
-        if (other._id === playerId || !other.body) return;
-
-        other.body.forEach((segment: {x: number, y: number}) => {
-            let odx = me.pos.x - segment.x;
-            let ody = me.pos.y - segment.y;
-
-            if (Math.abs(odx) > BOARD_WIDTH / 2) odx = odx > 0 ? odx - BOARD_WIDTH : odx + BOARD_WIDTH;
-            if (Math.abs(ody) > BOARD_HEIGHT / 2) ody = ody > 0 ? ody - BOARD_HEIGHT : ody + BOARD_HEIGHT;
-
-            const distToSegment = Math.sqrt(odx * odx + ody * ody);
-            if (distToSegment > 0 && distToSegment < AVOID_DISTANCE) {
-                const force = (AVOID_DISTANCE - distToSegment) / AVOID_DISTANCE;
-                vx += (odx / distToSegment) * force * 2;
-                vy += (ody / distToSegment) * force * 2;
-            }
-        });
-    });
-
-    const candidates: string[] = [];
-    
-    if (Math.abs(vx) > Math.abs(vy)) {
-        candidates.push(vx > 0 ? 'right' : 'left');
-        candidates.push(vy > 0 ? 'down' : 'up');
+    if (Math.abs(dx) > Math.abs(dy)) {
+        nextDir = dx > 0 ? 'right' : 'left';
     } else {
-        candidates.push(vy > 0 ? 'down' : 'up');
-        candidates.push(vx > 0 ? 'right' : 'left');
+        nextDir = dy > 0 ? 'down' : 'up';
     }
 
-    ['up', 'down', 'left', 'right'].forEach(d => {
-        if (candidates.indexOf(d) === -1) {
-            candidates.push(d);
-        }
-    });
-
-    const forbidden = currentDirection ? oppositeDir[currentDirection] : '';
-    const nextDirection = candidates.find(d => d !== forbidden);
-
-    if (nextDirection && nextDirection !== currentDirection) {
-        currentDirection = nextDirection;
-        socket.emit('move_player', { direction: nextDirection });
+    if (nextDir !== currentDirection && nextDir !== oppositeDir[currentDirection]) {
+        currentDirection = nextDir;
+        socket.emit('move_player', { direction: currentDirection });
     }
-}, 1000 / 20);
+}, 150);
 
