@@ -12,11 +12,24 @@
   <body>
     <canvas id="gameCanvas"></canvas>
 
+    <div id="controls">
+      <button id="ready-button">Ready</button>
+      <p id="status-text">Waiting for players...</p>
+    </div>
+
     <div id="scoreboard">
       <h3>Connected Players</h3>
       <ul id="player-list">
         <li>Waiting for players...</li>
       </ul>
+    </div>
+
+    <div id="game-over-modal" class="hidden">
+      <div id="game-over-card">
+        <h2 id="game-over-title">Victory</h2>
+        <p id="game-over-message">You won the match!</p>
+        <button id="restart-button">Play Again</button>
+      </div>
     </div>
   </body>
 </html>
