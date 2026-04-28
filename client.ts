@@ -2,8 +2,8 @@ declare const io: any;
 const socket = io("http://localhost:3000");
 
 const SETTINGS = {
-  BOARD_WIDTH: 1200,
-  BOARD_HEIGHT: 1200,
+  BOARD_WIDTH: 800,
+  BOARD_HEIGHT: 800,
   CELL_SIZE: 40,
   TICK_RATE: 10,
 };
@@ -28,6 +28,7 @@ const oppositeDir: Record<string, string> = {
 const readyButton = document.getElementById(
   "ready-button",
 ) as HTMLButtonElement | null;
+const playerIdText = document.getElementById("player-id-text") as HTMLElement | null;
 const statusText = document.getElementById("status-text") as HTMLElement | null;
 const gameOverModal = document.getElementById(
   "game-over-modal",
@@ -43,6 +44,18 @@ const gameOverMessage = document.getElementById(
 ) as HTMLElement | null;
 const restartButton = document.getElementById(
   "restart-button",
+) as HTMLButtonElement | null;
+const historyButton = document.getElementById(
+  "history-button",
+) as HTMLButtonElement | null;
+const historyModal = document.getElementById(
+  "history-modal",
+) as HTMLElement | null;
+const historyContent = document.getElementById(
+  "history-content",
+) as HTMLElement | null;
+const closeHistoryButton = document.getElementById(
+  "close-history-button",
 ) as HTMLButtonElement | null;
 
 if (readyButton) {
@@ -63,6 +76,79 @@ if (restartButton) {
   restartButton.addEventListener("click", () => {
     window.location.reload();
   });
+}
+
+if (historyButton) {
+  historyButton.addEventListener("click", openHistoryModal);
+}
+
+if (closeHistoryButton) {
+  closeHistoryButton.addEventListener("click", hideHistoryModal);
+}
+
+function hideHistoryModal() {
+  if (!historyModal) return;
+  historyModal.classList.add("hidden");
+}
+
+async function openHistoryModal() {
+  if (!historyModal || !historyContent) return;
+
+  historyContent.textContent = "Loading match history...";
+  historyModal.classList.remove("hidden");
+
+  try {
+    const response = await fetch("http://localhost:3000/matches");
+    if (!response.ok) {
+      throw new Error("Failed to load matches");
+    }
+
+    const matches = await response.json();
+    if (!Array.isArray(matches) || matches.length === 0) {
+      historyContent.textContent = "No matches recorded yet.";
+      return;
+    }
+
+    const table = document.createElement("table");
+    const headerRow = document.createElement("tr");
+    ["ID", "Player 1", "Player 2", "Winner"].forEach((label) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      headerRow.appendChild(th);
+    });
+    table.appendChild(headerRow);
+
+    matches.forEach((match: any) => {
+      const row = document.createElement("tr");
+      [
+        match.ID,
+        match.Player_1_ID?.substring(0, 5) || "",
+        match.Player_2_ID?.substring(0, 5) || "",
+        match.Winner_Player_ID ? match.Winner_Player_ID.substring(0, 5) : "Draw",
+      ].forEach((value) => {
+        const td = document.createElement("td");
+        td.textContent = value;
+        row.appendChild(td);
+      });
+      table.appendChild(row);
+    });
+
+    historyContent.innerHTML = "";
+    historyContent.appendChild(table);
+  } catch (error) {
+    historyContent.textContent = "Unable to load match history.";
+  }
+}
+
+function updatePlayerIdText() {
+  if (!playerIdText) return;
+  const displayId = playerId ? playerId.substring(0, 5) : "connecting...";
+  const currentPlayer = players.find((player) => player._id === playerId);
+  const color = currentPlayer?._color || "#eef2f7";
+  playerIdText.textContent = playerId
+    ? `Player ID: ${displayId}`
+    : "Player ID: connecting...";
+  playerIdText.style.color = color;
 }
 
 function showGameOver(isWinner: boolean | null) {
@@ -278,6 +364,7 @@ const sysncPlayerData = (data: any[]) => {
     isReady: p._isReady || p.isReady || false,
     isAlive: p.isAlive,
   }));
+  updatePlayerIdText();
 };
 
 socket.on("send_player_data", sysncPlayerData);
@@ -286,6 +373,7 @@ socket.on("player_moved", sysncPlayerData);
 
 socket.on("connect", () => {
   playerId = socket.id;
+  updatePlayerIdText();
 });
 
 socket.on("send_apple_data", (data: any) => {

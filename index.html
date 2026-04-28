@@ -13,15 +13,23 @@
     <canvas id="gameCanvas"></canvas>
 
     <div id="controls">
+      <p id="player-id-text">Player ID: connecting...</p>
       <button id="ready-button">Ready</button>
+      <button id="history-button">Match History</button>
       <p id="status-text">Waiting for players...</p>
-    </div>
-
-    <div id="scoreboard">
       <h3>Connected Players</h3>
       <ul id="player-list">
         <li>Waiting for players...</li>
       </ul>
+      <div id="apple-types">
+        <h3>Apple Types</h3>
+        <ul class="apple-types">
+          <li><span class="apple-icon apple-red"></span><strong>Red:</strong> Grow by 1</li>
+          <li><span class="apple-icon apple-golden"></span><strong>Golden:</strong> Grow by 3</li>
+          <li><span class="apple-icon apple-blue"></span><strong>Blue:</strong> Increases speed.</li>
+          <li><span class="apple-icon apple-green"></span><strong>Green:</strong> Shortens by 1.</li>
+        </ul>
+      </div>
     </div>
 
     <div id="game-over-modal" class="hidden">
@@ -29,6 +37,14 @@
         <h2 id="game-over-title">Victory</h2>
         <p id="game-over-message">You won the match!</p>
         <button id="restart-button">Play Again</button>
+      </div>
+    </div>
+
+    <div id="history-modal" class="hidden">
+      <div id="history-card">
+        <h2>Match History</h2>
+        <div id="history-content">Loading...</div>
+        <button id="close-history-button">Close</button>
       </div>
     </div>
   </body>
