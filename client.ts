@@ -352,7 +352,7 @@ function updateScoreboard() {
   });
 }
 
-const sysncPlayerData = (data: any[]) => {
+const syncPlayerData = (data: any[]) => {
   players = data.map((p) => ({
     _id: p._id || p.id,
     _color: p._color || p.color,
@@ -367,9 +367,9 @@ const sysncPlayerData = (data: any[]) => {
   updatePlayerIdText();
 };
 
-socket.on("send_player_data", sysncPlayerData);
+socket.on("send_player_data", syncPlayerData);
 
-socket.on("player_moved", sysncPlayerData);
+socket.on("player_moved", syncPlayerData);
 
 socket.on("connect", () => {
   playerId = socket.id;
