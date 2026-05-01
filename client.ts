@@ -249,6 +249,8 @@ let remotePlayer: any = null;
 let localPlayer: Player | null = null;
 let isReady = false;
 let gameStarted = false;
+let focusView = false;
+const CAMERA_SCALE = 1.7;
 const opponents: Record<string, string> = {
   up: "down",
   down: "up",
@@ -278,6 +280,9 @@ const restartButton = document.getElementById(
 ) as HTMLButtonElement | null;
 const historyButton = document.getElementById(
   "history-button",
+) as HTMLButtonElement | null;
+const focusButton = document.getElementById(
+  "focus-button",
 ) as HTMLButtonElement | null;
 const historyModal = document.getElementById(
   "history-modal",
@@ -311,6 +316,15 @@ if (restartButton) {
 
 if (historyButton) {
   historyButton.addEventListener("click", openHistoryModal);
+}
+
+if (focusButton) {
+  focusButton.addEventListener("click", () => {
+    focusView = !focusView;
+    if (focusButton) {
+      focusButton.textContent = focusView ? "Exit focus view" : "Focus on snake";
+    }
+  });
 }
 
 if (closeHistoryButton) {
@@ -411,11 +425,27 @@ function hideGameOver() {
 function draw() {
   if (!ctx) return;
 
+  applyCameraTransform();
   drawBackground();
   drawApples();
   drawPlayers();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   updateScoreboard();
+}
+
+function applyCameraTransform() {
+  if (!focusView || !localPlayer) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    return;
+  }
+
+  const x = localPlayer.pos.x;
+  const y = localPlayer.pos.y;
+  const scale = CAMERA_SCALE;
+  const offsetX = canvas.width / 2 - x * scale;
+  const offsetY = canvas.height / 2 - y * scale;
+  ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
 }
 
 function drawBackground() {
