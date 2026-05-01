@@ -6,23 +6,44 @@ const SETTINGS = {
   BOARD_HEIGHT: 800,
   CELL_SIZE: 40,
   TICK_RATE: 10,
+  MAX_LENGTH: 40,
 };
 
 type Direction = "up" | "down" | "left" | "right";
+type Point = { x: number; y: number };
+type AppleType = "normal" | "golden" | "blue" | "green";
+
+type Apple = {
+  pos: Point;
+  type?: AppleType;
+};
+
+type PlayerState = {
+  id: string;
+  color: string;
+  pos: Point;
+  body: Point[];
+  length: number;
+  speed: number;
+  direction: Direction | "";
+  isAlive: boolean;
+};
 
 class Player {
   private _id: string;
   private _color: string;
-  private _pos: { x: number; y: number };
-  private _body: { x: number; y: number }[];
+  private _pos: Point;
+  private _body: Point[];
   private _length: number;
-  private _speed: number = 1;
+  private _baseSpeed: number = 1;
+  private _temporarySpeedBonus: number = 0;
+  private _temporarySpeedUntil: number = 0;
   private _direction: string = "";
 
   constructor(
     id: string,
     color: string,
-    pos: { x: number; y: number },
+    pos: Point,
     initialLength: number = 5,
   ) {
     this._id = id;
@@ -40,10 +61,11 @@ class Player {
     dy: number,
     boardWidth: number,
     boardHeight: number,
-  ): { x: number; y: number }[] {
-    const visited: { x: number; y: number }[] = [];
+  ): Point[] {
+    const visited: Point[] = [];
     const margin = 20;
-    const step = Math.max(1, Math.floor(this._speed));
+    this.updateTimedEffects();
+    const step = Math.max(1, Math.floor(this._baseSpeed + this._temporarySpeedBonus));
     let nextX = this._pos.x;
     let nextY = this._pos.y;
 
@@ -57,8 +79,7 @@ class Player {
         nextY < margin ||
         nextY > boardHeight - margin
       ) {
-        this.applyDamage();
-        this.autoTurn(boardWidth, boardHeight);
+        this.kill();
         this.addBodySegment({ x: this._pos.x, y: this._pos.y });
         return visited;
       }
@@ -98,7 +119,7 @@ class Player {
     }
   }
 
-  public addBodySegment(pos: { x: number; y: number }) {
+  public addBodySegment(pos: Point) {
     this._body.unshift({ x: pos.x, y: pos.y });
     while (this._body.length > this._length) {
       this._body.pop();
@@ -109,8 +130,21 @@ class Player {
     this._length += amount;
   }
 
-  public increaseSpeed() {
-    this._speed += 1;
+  public kill() {
+    this._length = 0;
+    this._body = [{ x: this._pos.x, y: this._pos.y }];
+  }
+
+  public addTemporarySpeedBoost(amount: number, durationMs: number) {
+    this._temporarySpeedBonus = amount;
+    this._temporarySpeedUntil = Date.now() + durationMs;
+  }
+
+  public updateTimedEffects() {
+    if (this._temporarySpeedBonus > 0 && Date.now() >= this._temporarySpeedUntil) {
+      this._temporarySpeedBonus = 0;
+      this._temporarySpeedUntil = 0;
+    }
   }
 
   public applyDamage() {
@@ -120,7 +154,11 @@ class Player {
   }
 
   public isAlive(): boolean {
-    return this._length > 2;
+    return this._length > 0;
+  }
+
+  public hasWonByLength(): boolean {
+    return this._length > SETTINGS.MAX_LENGTH;
   }
 
   public get id(): string {
@@ -131,11 +169,11 @@ class Player {
     return this._color;
   }
 
-  public get pos(): { x: number; y: number } {
+  public get pos(): Point {
     return this._pos;
   }
 
-  public get body(): { x: number; y: number }[] {
+  public get body(): Point[] {
     return this._body;
   }
 
@@ -151,47 +189,61 @@ class Player {
   }
 
   public get speed(): number {
-    return this._speed;
+    this.updateTimedEffects();
+    return this._baseSpeed + this._temporarySpeedBonus;
+  }
+
+  public toState(): PlayerState {
+    return {
+      id: this._id,
+      color: this._color,
+      pos: this._pos,
+      body: this._body,
+      length: this._length,
+      speed: this.speed,
+      direction: this._direction as Direction | "",
+      isAlive: this.isAlive(),
+    };
   }
 }
 
-/**
- * Find the best direction to move toward a target using BFS pathfinding
- */
 function findPathToTarget(
-  startPos: { x: number; y: number },
-  targetPos: { x: number; y: number },
+  startPos: Point,
+  targetPos: Point,
   boardWidth: number,
   boardHeight: number,
   cellSize: number,
-  obstacles: { x: number; y: number }[],
-  currentDirection: string
-): string | null {
+  obstacles: Point[],
+  currentDirection: Direction | "",
+  dangerPoints: Point[] = [],
+  dangerWeight: number = 2.5,
+): Direction | null {
   const margin = 20;
-  const directions = ["up", "down", "left", "right"];
-  const opposites: Record<string, string> = { up: "down", down: "up", left: "right", right: "left" };
+  const directions: Direction[] = ["up", "down", "left", "right"];
   
   const startGrid = { x: Math.round(startPos.x / cellSize), y: Math.round(startPos.y / cellSize) };
   const targetGrid = { x: Math.round(targetPos.x / cellSize), y: Math.round(targetPos.y / cellSize) };
   
   const obstacleSet = new Set(obstacles.map(o => `${Math.round(o.x / cellSize)},${Math.round(o.y / cellSize)}`));
   
-  const queue: Array<{ grid: { x: number; y: number }; direction: string }> = [];
-  const visited = new Set<string>();
+  const queue: Array<{ grid: Point; direction: Direction | ""; cost: number }> = [];
+  const bestCosts = new Map<string, number>();
   
-  queue.push({ grid: startGrid, direction: "" });
-  visited.add(`${startGrid.x},${startGrid.y}`);
+  queue.push({ grid: startGrid, direction: "", cost: 0 });
+  bestCosts.set(`${startGrid.x},${startGrid.y}`, 0);
   
   while (queue.length > 0) {
+    queue.sort((a, b) => a.cost - b.cost);
     const current = queue.shift()!;
-    const { grid, direction: pathDirection } = current;
+    const { grid, direction: pathDirection, cost } = current;
     
     if (grid.x === targetGrid.x && grid.y === targetGrid.y) {
-      return pathDirection || "up";
+      return pathDirection || null;
     }
     
     for (const dir of directions) {
-      if (currentDirection && dir === opposites[currentDirection]) {
+      const isFirstStep = pathDirection === "";
+      if (isFirstStep && currentDirection && dir === oppositeDir[currentDirection]) {
         continue;
       }
       
@@ -213,7 +265,6 @@ function findPathToTarget(
       
       const gridKey = `${nextGrid.x},${nextGrid.y}`;
       
-      if (visited.has(gridKey)) continue;
       if (obstacleSet.has(gridKey)) continue;
       
       const pixelX = nextGrid.x * cellSize;
@@ -222,9 +273,26 @@ function findPathToTarget(
         continue;
       }
       
-      visited.add(gridKey);
       const nextDirection = pathDirection || dir;
-      queue.push({ grid: nextGrid, direction: nextDirection });
+      const dangerCost = dangerPoints.reduce((total, point) => {
+        const dangerGrid = {
+          x: Math.round(point.x / cellSize),
+          y: Math.round(point.y / cellSize),
+        };
+        const distance = Math.abs(nextGrid.x - dangerGrid.x) + Math.abs(nextGrid.y - dangerGrid.y);
+        if (distance === 0) return total + dangerWeight * 8;
+        if (distance === 1) return total + dangerWeight * 3;
+        if (distance === 2) return total + dangerWeight;
+        return total;
+      }, 0);
+      const targetDistance = Math.abs(nextGrid.x - targetGrid.x) + Math.abs(nextGrid.y - targetGrid.y);
+      const nextCost = cost + 1 + dangerCost + targetDistance * 0.05;
+      const previousBest = bestCosts.get(gridKey);
+
+      if (previousBest !== undefined && previousBest <= nextCost) continue;
+
+      bestCosts.set(gridKey, nextCost);
+      queue.push({ grid: nextGrid, direction: nextDirection, cost: nextCost });
     }
   }
   
@@ -238,14 +306,291 @@ const oppositeDir: Record<string, string> = {
   right: "left",
 };
 
+function directionToDelta(direction: Direction | ""): Point {
+  switch (direction) {
+    case "up":
+      return { x: 0, y: -SETTINGS.CELL_SIZE };
+    case "down":
+      return { x: 0, y: SETTINGS.CELL_SIZE };
+    case "left":
+      return { x: -SETTINGS.CELL_SIZE, y: 0 };
+    case "right":
+      return { x: SETTINGS.CELL_SIZE, y: 0 };
+    default:
+      return { x: 0, y: 0 };
+  }
+}
+
+function isInsideBoard(pos: Point): boolean {
+  const margin = 20;
+  return (
+    pos.x >= margin &&
+    pos.x <= SETTINGS.BOARD_WIDTH - margin &&
+    pos.y >= margin &&
+    pos.y <= SETTINGS.BOARD_HEIGHT - margin
+  );
+}
+
+function gridKey(pos: Point): string {
+  return `${Math.round(pos.x / SETTINGS.CELL_SIZE)},${Math.round(pos.y / SETTINGS.CELL_SIZE)}`;
+}
+
+function nextPosition(pos: Point, direction: Direction): Point {
+  const delta = directionToDelta(direction);
+  return {
+    x: pos.x + delta.x,
+    y: pos.y + delta.y,
+  };
+}
+
+function chooseSafeDirection(player: Player, target: Point | null): Direction | null {
+  const directions: Direction[] = ["up", "down", "left", "right"];
+  const ownBody = new Set(player.body.slice(1).map(gridKey));
+  const opponentBody = new Set((remotePlayer?.body || []).map(gridKey));
+
+  const choices = directions
+    .filter((direction) => {
+      if (player.direction && direction === oppositeDir[player.direction]) {
+        return false;
+      }
+
+      const next = nextPosition(player.pos, direction);
+      const key = gridKey(next);
+      return isInsideBoard(next) && !ownBody.has(key) && !opponentBody.has(key);
+    })
+    .map((direction) => {
+      const next = nextPosition(player.pos, direction);
+      const targetDistance = target
+        ? Math.hypot(next.x - target.x, next.y - target.y)
+        : 0;
+      const dangerPenalty = (remotePlayer?.body || []).reduce((penalty, point) => {
+        const distance = Math.hypot(next.x - point.x, next.y - point.y);
+        if (distance < SETTINGS.CELL_SIZE * 0.75) return penalty + 800;
+        if (distance < SETTINGS.CELL_SIZE * 1.75) return penalty + 180;
+        return penalty;
+      }, 0);
+
+      return {
+        direction,
+        score: targetDistance + dangerPenalty,
+      };
+    })
+    .sort((a, b) => a.score - b.score);
+
+  return choices[0]?.direction || null;
+}
+
+function chooseImmediateAppleDirection(player: Player, apple: Apple | null): Direction | null {
+  if (!apple) return null;
+
+  const ownBody = new Set(player.body.slice(1).map(gridKey));
+  const opponentBody = new Set((remotePlayer?.body || []).map(gridKey));
+  const directions: Direction[] = ["up", "down", "left", "right"];
+
+  for (const direction of directions) {
+    const next = nextPosition(player.pos, direction);
+    const reachesApple = Math.hypot(next.x - apple.pos.x, next.y - apple.pos.y) < SETTINGS.CELL_SIZE * 0.65;
+
+    const key = gridKey(next);
+    if (reachesApple && isInsideBoard(next) && !ownBody.has(key) && !opponentBody.has(key)) {
+      return direction;
+    }
+  }
+
+  return null;
+}
+
+function chooseNearbyAppleDirection(player: Player, apple: Apple | null): Direction | null {
+  if (!apple) return null;
+
+  const distanceToApple = Math.hypot(player.pos.x - apple.pos.x, player.pos.y - apple.pos.y);
+  if (distanceToApple > SETTINGS.CELL_SIZE * 1.75) return null;
+
+  return chooseSafeDirection(player, apple.pos);
+}
+
+function chooseImmediateAppleTarget(player: Player, availableApples: Apple[]): Apple | null {
+  let bestApple: Apple | null = null;
+  let bestDistance = Infinity;
+
+  availableApples.forEach((apple) => {
+    const direction = chooseImmediateAppleDirection(player, apple);
+    if (!direction) return;
+
+    const distance = Math.hypot(player.pos.x - apple.pos.x, player.pos.y - apple.pos.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestApple = apple;
+    }
+  });
+
+  return bestApple;
+}
+
+function normalizePlayerState(player: Player | PlayerState | null): PlayerState | null {
+  if (!player) return null;
+  if (player instanceof Player) return player.toState();
+
+  return {
+    id: player.id,
+    color: player.color,
+    pos: player.pos,
+    body: Array.isArray(player.body) ? player.body : [],
+    length: player.length,
+    speed: player.speed || 1,
+    direction: player.direction || "",
+    isAlive: Boolean(player.isAlive),
+  };
+}
+
+function appleValue(apple: Apple, playerLength: number): number {
+  switch (apple.type || "normal") {
+    case "golden":
+      return 4;
+    case "blue":
+      return playerLength >= 4 ? 3 : 1;
+    case "green":
+      return playerLength > 4 ? 0.5 : -8;
+    default:
+      return 2;
+  }
+}
+
+function chooseAppleTarget(player: Player, availableApples: Apple[]): Apple | null {
+  const immediateApple = chooseImmediateAppleTarget(player, availableApples);
+  if (immediateApple) return immediateApple;
+
+  const remoteState = normalizePlayerState(remotePlayer);
+  const dangerPoints = remoteState?.body || [];
+  const obstacles = [
+    ...player.body.slice(1),
+    ...dangerPoints,
+  ];
+
+  let bestApple: Apple | null = null;
+  let bestScore = -Infinity;
+
+  availableApples.forEach((apple) => {
+    const direction = findPathToTarget(
+      player.pos,
+      apple.pos,
+      SETTINGS.BOARD_WIDTH,
+      SETTINGS.BOARD_HEIGHT,
+      SETTINGS.CELL_SIZE,
+      obstacles,
+      player.direction as Direction | "",
+      dangerPoints,
+    );
+
+    if (!direction) return;
+
+    const distance = Math.max(1, Math.hypot(player.pos.x - apple.pos.x, player.pos.y - apple.pos.y));
+    const nearestDanger = dangerPoints.reduce((nearest, point) => {
+      const dangerDistance = Math.hypot(apple.pos.x - point.x, apple.pos.y - point.y);
+      return Math.min(nearest, dangerDistance);
+    }, Infinity);
+    const dangerPenalty = nearestDanger < SETTINGS.CELL_SIZE * 2 ? 1.8 : 1;
+    const score = appleValue(apple, player.length) * 1000 / distance / dangerPenalty;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestApple = apple;
+    }
+  });
+
+  return bestApple;
+}
+
+function collidesWithSnakeAtPositions(positions: Point[], otherSnake: PlayerState | null): boolean {
+  if (!otherSnake || !otherSnake.isAlive) return false;
+  const hitRadius = SETTINGS.CELL_SIZE * 0.9;
+
+  return positions.some((position) => {
+    return otherSnake.body.some((segment) => {
+      return Math.hypot(position.x - segment.x, position.y - segment.y) < hitRadius;
+    });
+  });
+}
+
+function collidesWithPoints(positions: Point[], points: Point[]): boolean {
+  const hitRadius = SETTINGS.CELL_SIZE * 0.9;
+
+  return positions.some((position) => {
+    return points.some((point) => {
+      return Math.hypot(position.x - point.x, position.y - point.y) < hitRadius;
+    });
+  });
+}
+
+function emitSnakeState(player: Player) {
+  socket.emit("update_snake_state", {
+    pos: player.pos,
+    body: player.body,
+    length: player.length,
+    speed: player.speed,
+    direction: player.direction,
+    isAlive: player.isAlive(),
+    wonByLength: player.hasWonByLength(),
+  });
+}
+
+function finishLocalGame(isWinner: boolean | null) {
+  gameStarted = false;
+  showGameOver(isWinner);
+}
+
+function applyAppleEffect(player: Player, apple: Apple) {
+  switch (apple.type || "normal") {
+    case "golden":
+      player.grow(3);
+      break;
+    case "blue":
+      player.addTemporarySpeedBoost(1, 5000);
+      break;
+    case "green":
+      player.applyDamage();
+      break;
+    default:
+      player.grow(1);
+      break;
+  }
+}
+
+function consumeApplesAtPositions(player: Player, positions: Point[]) {
+  const pickupRadius = SETTINGS.CELL_SIZE * 0.65;
+  const eatenApples: Apple[] = [];
+  const pickupPositions = [player.pos, ...positions];
+
+  apples = apples.filter((apple) => {
+    const wasEaten = pickupPositions.some((position) => {
+      return Math.hypot(position.x - apple.pos.x, position.y - apple.pos.y) < pickupRadius;
+    });
+
+    if (wasEaten) {
+      applyAppleEffect(player, apple);
+      eatenApples.push(apple);
+      return false;
+    }
+
+    return true;
+  });
+
+  eatenApples.forEach((apple) => {
+    socket.emit("apple_collected", {
+      pos: apple.pos,
+      type: apple.type || "normal",
+    });
+  });
+}
+
 const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 canvas.width = SETTINGS.BOARD_WIDTH;
 canvas.height = SETTINGS.BOARD_HEIGHT;
 
 let playerId: string = "";
-let apples: any[] = [];
-let remotePlayer: any = null;
+let apples: Apple[] = [];
+let remotePlayer: PlayerState | null = null;
 let localPlayer: Player | null = null;
 let isReady = false;
 let gameStarted = false;
@@ -527,14 +872,15 @@ function drawApples() {
 }
 
 function drawPlayers() {
-  const playersToDisplay = [];
-  if (localPlayer) playersToDisplay.push(localPlayer);
-  if (remotePlayer) playersToDisplay.push(remotePlayer);
+  const playersToDisplay = [
+    normalizePlayerState(localPlayer),
+    normalizePlayerState(remotePlayer),
+  ].filter((player): player is PlayerState => Boolean(player));
   
   playersToDisplay.forEach((player) => {
     if (!player.body || player.body.length === 0) return;
 
-    const color = player._color || player.color || "blue";
+    const color = player.color || "blue";
     const radius = SETTINGS.CELL_SIZE / 2 - 5;
 
     player.body.forEach((segment: any, idx: number) => {
@@ -560,7 +906,7 @@ function drawPlayers() {
       }
 
       if (idx === 0) {
-        drawEyes(segment.x, segment.y, player._direction || player.direction);
+        drawEyes(segment.x, segment.y, player.direction);
       }
     });
   });
@@ -605,12 +951,12 @@ function updateScoreboard() {
     return;
   }
 
-  [localPlayer, remotePlayer].forEach((player) => {
+  [normalizePlayerState(localPlayer), normalizePlayerState(remotePlayer)].forEach((player) => {
     if (!player) return;
     const li = document.createElement("li");
-    li.style.color = player._color || player.color || "blue";
+    li.style.color = player.color || "blue";
     const aliveLabel = player.isAlive ? "Alive" : "Dead";
-    const speedLabel = player._speed ? `Speed: ${player._speed}` : player.speed ? `Speed: ${player.speed}` : "Speed: 1";
+    const speedLabel = `Speed: ${player.speed || 1}`;
     li.textContent = `Player: ${player.id?.substring(0, 5) || playerId?.substring(0, 5)} (Length: ${player.length}) - ${aliveLabel} - ${speedLabel}`;
     scoreboard.appendChild(li);
   });
@@ -623,6 +969,11 @@ socket.on("connect", () => {
 
 socket.on("player_moved", (playerStates: any[]) => {
   playerStates.forEach((state) => {
+    if (state.length > SETTINGS.MAX_LENGTH) {
+      finishLocalGame(state.id === playerId);
+      return;
+    }
+
     if (state.id === playerId) {
       // Initialize localPlayer on first update if not exists
       if (!localPlayer) {
@@ -635,16 +986,19 @@ socket.on("player_moved", (playerStates: any[]) => {
         localPlayer.direction = state.direction;
         // Restore body
         localPlayer["_body"] = state.body;
-        localPlayer["_speed"] = state.speed;
+        localPlayer["_baseSpeed"] = 1;
+        localPlayer["_temporarySpeedBonus"] = Math.max(0, (state.speed || 1) - 1);
+        localPlayer["_temporarySpeedUntil"] = localPlayer["_temporarySpeedBonus"] > 0
+          ? Date.now() + 5000
+          : 0;
       }
     } else {
-      // Store remote player
-      remotePlayer = state;
+      remotePlayer = normalizePlayerState(state);
     }
   });
 });
 
-socket.on("send_apple_data", (data: any) => {
+socket.on("send_apple_data", (data: Apple[]) => {
   apples = data;
 });
 
@@ -679,63 +1033,76 @@ gameLoop();
 
 // Game update loop - runs at TICK_RATE and handles local movement
 setInterval(() => {
-  if (!gameStarted || !localPlayer || apples.length === 0) return;
+  if (!gameStarted || !localPlayer) return;
 
-  // Find closest apple
-  let closestApple = apples[0];
-  let bestDist = Infinity;
-  apples.forEach((a) => {
-    const d = Math.hypot(localPlayer!.pos.x - a.pos.x, localPlayer!.pos.y - a.pos.y);
-    if (d < bestDist) {
-      bestDist = d;
-      closestApple = a;
+  const targetApple = chooseAppleTarget(localPlayer, apples);
+
+  if (targetApple) {
+    const immediateDirection = chooseImmediateAppleDirection(localPlayer, targetApple);
+    const nearbyDirection = chooseNearbyAppleDirection(localPlayer, targetApple);
+    const pathDirection = findPathToTarget(
+      localPlayer.pos,
+      targetApple.pos,
+      SETTINGS.BOARD_WIDTH,
+      SETTINGS.BOARD_HEIGHT,
+      SETTINGS.CELL_SIZE,
+      [
+        ...localPlayer.body.slice(1),
+        ...(remotePlayer?.body || []),
+      ],
+      localPlayer.direction as Direction | "",
+      remotePlayer?.body || [],
+    );
+    const fallbackDirection = chooseSafeDirection(localPlayer, targetApple.pos);
+    const nextDirection = immediateDirection || nearbyDirection || pathDirection || fallbackDirection;
+
+    if (nextDirection) {
+      localPlayer.direction = nextDirection;
     }
-  });
+  } else {
+    const cruisingDirection = chooseSafeDirection(localPlayer, null);
+    if (cruisingDirection && cruisingDirection !== opponents[localPlayer.direction]) {
+      localPlayer.direction = cruisingDirection;
+    }
+  }
 
-  // Get all obstacles (remote player body)
-  const obstacles = remotePlayer?.body || [];
+  const currentDirection = localPlayer.direction as Direction | "";
+  if (!currentDirection) {
+    const startingDirection = chooseSafeDirection(localPlayer, targetApple?.pos || null);
+    if (!startingDirection) return;
+    localPlayer.direction = startingDirection;
+  }
 
-  // Use pathfinding to find best direction
-  const pathDirection = findPathToTarget(
-    localPlayer.pos,
-    closestApple.pos,
+  const currentDelta = directionToDelta(localPlayer.direction as Direction);
+  const bodyBeforeMove = localPlayer.body.slice(1);
+  const visitedPositions = localPlayer.movePlayer(
+    currentDelta.x,
+    currentDelta.y,
     SETTINGS.BOARD_WIDTH,
     SETTINGS.BOARD_HEIGHT,
-    SETTINGS.CELL_SIZE,
-    obstacles,
-    localPlayer.direction
   );
+  const collisionTrail = [localPlayer.pos, ...visitedPositions];
 
-  if (pathDirection && pathDirection !== opponents[localPlayer.direction]) {
-    localPlayer.direction = pathDirection;
+  if (
+    !localPlayer.isAlive() ||
+    collidesWithPoints(collisionTrail, bodyBeforeMove) ||
+    collidesWithSnakeAtPositions(collisionTrail, remotePlayer)
+  ) {
+    localPlayer.kill();
+    emitSnakeState(localPlayer);
+    socket.emit("player_died", { id: playerId, reason: "collision" });
+    finishLocalGame(false);
+    return;
   }
 
-  // Move the player
-  let dx = 0, dy = 0;
-  switch (localPlayer.direction) {
-    case "up":
-      dy = -SETTINGS.CELL_SIZE;
-      break;
-    case "down":
-      dy = SETTINGS.CELL_SIZE;
-      break;
-    case "left":
-      dx = -SETTINGS.CELL_SIZE;
-      break;
-    case "right":
-      dx = SETTINGS.CELL_SIZE;
-      break;
+  consumeApplesAtPositions(localPlayer, visitedPositions);
+
+  if (localPlayer.hasWonByLength()) {
+    emitSnakeState(localPlayer);
+    socket.emit("max_length_reached", { id: playerId, length: localPlayer.length });
+    finishLocalGame(true);
+    return;
   }
 
-  localPlayer.movePlayer(dx, dy, SETTINGS.BOARD_WIDTH, SETTINGS.BOARD_HEIGHT);
-
-  // Send updated state to server
-  socket.emit("update_snake_state", {
-    pos: localPlayer.pos,
-    body: localPlayer.body,
-    length: localPlayer.length,
-    speed: localPlayer.speed,
-    direction: localPlayer.direction,
-    isAlive: localPlayer.isAlive(),
-  });
+  emitSnakeState(localPlayer);
 }, 1000 / SETTINGS.TICK_RATE);

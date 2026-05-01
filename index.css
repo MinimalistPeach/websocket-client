@@ -4,13 +4,22 @@ body {
   color: white;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 30px;
   padding: 20px;
   margin: 0;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 #gameCanvas {
   background-color: #A2D149;
+  width: min(800px, calc(100vw - 320px));
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
 }
 
 #scoreboard {
@@ -43,6 +52,7 @@ li {
   border-radius: 20px;
   box-shadow: 0 20px 45px rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(10px);
+  box-sizing: border-box;
 }
 
 #player-id-text {
@@ -363,4 +373,38 @@ li {
 
 #restart-button:active {
   transform: translateY(0);
+}
+
+@media (max-width: 1120px) {
+  body {
+    justify-content: center;
+  }
+
+  #gameCanvas {
+    width: min(800px, calc(100vw - 40px));
+  }
+
+  #controls,
+  #scoreboard {
+    width: min(800px, calc(100vw - 40px));
+  }
+}
+
+@media (max-width: 520px) {
+  body {
+    padding: 12px;
+    gap: 16px;
+  }
+
+  #gameCanvas,
+  #controls,
+  #scoreboard {
+    width: calc(100vw - 24px);
+  }
+
+  #ready-button,
+  #history-button,
+  #focus-button {
+    width: 100%;
+  }
 }
