@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width,initial-scale=1.0" />
     <title>Table Grid Snake Game</title>
     <script src="node_modules/socket.io-client/dist/socket.io.js"></script>
+    <script src="dist/types.js" defer></script>
+    <script src="dist/settings.js" defer></script>
+    <script src="dist/geometry.js" defer></script>
+    <script src="dist/player-model.js" defer></script>
+    <script src="dist/snake-ai.js" defer></script>
+    <script src="dist/apple-system.js" defer></script>
+    <script src="dist/game-renderer.js" defer></script>
+    <script src="dist/game-ui.js" defer></script>
     <script src="dist/client.js" defer></script>
     <link rel="stylesheet" href="index.css" />
   </head>
@@ -27,7 +35,7 @@
         <ul class="apple-types">
           <li><span class="apple-icon apple-red"></span><strong>Red:</strong> Grow by 1</li>
           <li><span class="apple-icon apple-golden"></span><strong>Golden:</strong> Grow by 3</li>
-          <li><span class="apple-icon apple-blue"></span><strong>Blue:</strong> Increases speed.</li>
+          <li><span class="apple-icon apple-blue"></span><strong>Blue:</strong> Speed boost for 5 seconds.</li>
           <li><span class="apple-icon apple-green"></span><strong>Green:</strong> Shortens by 1.</li>
         </ul>
       </div>
