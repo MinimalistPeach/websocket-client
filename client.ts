@@ -8,6 +8,236 @@ const SETTINGS = {
   TICK_RATE: 10,
 };
 
+type Direction = "up" | "down" | "left" | "right";
+
+class Player {
+  private _id: string;
+  private _color: string;
+  private _pos: { x: number; y: number };
+  private _body: { x: number; y: number }[];
+  private _length: number;
+  private _speed: number = 1;
+  private _direction: string = "";
+
+  constructor(
+    id: string,
+    color: string,
+    pos: { x: number; y: number },
+    initialLength: number = 5,
+  ) {
+    this._id = id;
+    this._color = color;
+    this._pos = pos;
+    this._length = initialLength;
+    this._body = Array.from({ length: this._length }, () => ({
+      x: pos.x,
+      y: pos.y,
+    }));
+  }
+
+  public movePlayer(
+    dx: number,
+    dy: number,
+    boardWidth: number,
+    boardHeight: number,
+  ): { x: number; y: number }[] {
+    const visited: { x: number; y: number }[] = [];
+    const margin = 20;
+    const step = Math.max(1, Math.floor(this._speed));
+    let nextX = this._pos.x;
+    let nextY = this._pos.y;
+
+    for (let i = 0; i < step; i++) {
+      nextX += dx;
+      nextY += dy;
+
+      if (
+        nextX < margin ||
+        nextX > boardWidth - margin ||
+        nextY < margin ||
+        nextY > boardHeight - margin
+      ) {
+        this.applyDamage();
+        this.autoTurn(boardWidth, boardHeight);
+        this.addBodySegment({ x: this._pos.x, y: this._pos.y });
+        return visited;
+      }
+
+      this._pos.x = nextX;
+      this._pos.y = nextY;
+      this.addBodySegment({ x: this._pos.x, y: this._pos.y });
+      visited.push({ x: this._pos.x, y: this._pos.y });
+    }
+
+    return visited;
+  }
+
+  public autoTurn(width: number, height: number) {
+    const possibleDirs: Direction[] = [];
+    const margin = 20;
+
+    if (this._pos.y > margin) possibleDirs.push("up");
+    if (this._pos.y < height - margin) possibleDirs.push("down");
+    if (this._pos.x > margin) possibleDirs.push("left");
+    if (this._pos.x < width - margin) possibleDirs.push("right");
+
+    const opposite: Record<Direction, Direction> = {
+      up: "down",
+      down: "up",
+      left: "right",
+      right: "left",
+    };
+
+    const validChoices = possibleDirs.filter(
+      (d) => d !== opposite[this._direction as Direction],
+    );
+
+    if (validChoices.length > 0) {
+      this._direction =
+        validChoices[Math.floor(Math.random() * validChoices.length)];
+    }
+  }
+
+  public addBodySegment(pos: { x: number; y: number }) {
+    this._body.unshift({ x: pos.x, y: pos.y });
+    while (this._body.length > this._length) {
+      this._body.pop();
+    }
+  }
+
+  public grow(amount: number = 1) {
+    this._length += amount;
+  }
+
+  public increaseSpeed() {
+    this._speed += 1;
+  }
+
+  public applyDamage() {
+    if (this._length > 2) {
+      this._length -= 1;
+    }
+  }
+
+  public isAlive(): boolean {
+    return this._length > 2;
+  }
+
+  public get id(): string {
+    return this._id;
+  }
+
+  public get color(): string {
+    return this._color;
+  }
+
+  public get pos(): { x: number; y: number } {
+    return this._pos;
+  }
+
+  public get body(): { x: number; y: number }[] {
+    return this._body;
+  }
+
+  public get length(): number {
+    return this._length;
+  }
+
+  public get direction(): string {
+    return this._direction;
+  }
+  public set direction(value: string) {
+    this._direction = value;
+  }
+
+  public get speed(): number {
+    return this._speed;
+  }
+}
+
+/**
+ * Find the best direction to move toward a target using BFS pathfinding
+ */
+function findPathToTarget(
+  startPos: { x: number; y: number },
+  targetPos: { x: number; y: number },
+  boardWidth: number,
+  boardHeight: number,
+  cellSize: number,
+  obstacles: { x: number; y: number }[],
+  currentDirection: string
+): string | null {
+  const margin = 20;
+  const directions = ["up", "down", "left", "right"];
+  const opposites: Record<string, string> = { up: "down", down: "up", left: "right", right: "left" };
+  
+  const startGrid = { x: Math.round(startPos.x / cellSize), y: Math.round(startPos.y / cellSize) };
+  const targetGrid = { x: Math.round(targetPos.x / cellSize), y: Math.round(targetPos.y / cellSize) };
+  
+  const obstacleSet = new Set(obstacles.map(o => `${Math.round(o.x / cellSize)},${Math.round(o.y / cellSize)}`));
+  
+  const queue: Array<{ grid: { x: number; y: number }; direction: string }> = [];
+  const visited = new Set<string>();
+  
+  queue.push({ grid: startGrid, direction: "" });
+  visited.add(`${startGrid.x},${startGrid.y}`);
+  
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const { grid, direction: pathDirection } = current;
+    
+    if (grid.x === targetGrid.x && grid.y === targetGrid.y) {
+      return pathDirection || "up";
+    }
+    
+    for (const dir of directions) {
+      if (currentDirection && dir === opposites[currentDirection]) {
+        continue;
+      }
+      
+      let nextGrid = { ...grid };
+      switch (dir) {
+        case "up":
+          nextGrid.y -= 1;
+          break;
+        case "down":
+          nextGrid.y += 1;
+          break;
+        case "left":
+          nextGrid.x -= 1;
+          break;
+        case "right":
+          nextGrid.x += 1;
+          break;
+      }
+      
+      const gridKey = `${nextGrid.x},${nextGrid.y}`;
+      
+      if (visited.has(gridKey)) continue;
+      if (obstacleSet.has(gridKey)) continue;
+      
+      const pixelX = nextGrid.x * cellSize;
+      const pixelY = nextGrid.y * cellSize;
+      if (pixelX < margin || pixelX > boardWidth - margin || pixelY < margin || pixelY > boardHeight - margin) {
+        continue;
+      }
+      
+      visited.add(gridKey);
+      const nextDirection = pathDirection || dir;
+      queue.push({ grid: nextGrid, direction: nextDirection });
+    }
+  }
+  
+  return null;
+}
+
+const oppositeDir: Record<string, string> = {
+  up: "down",
+  down: "up",
+  left: "right",
+  right: "left",
+};
+
 const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 canvas.width = SETTINGS.BOARD_WIDTH;
@@ -15,10 +245,11 @@ canvas.height = SETTINGS.BOARD_HEIGHT;
 
 let playerId: string = "";
 let apples: any[] = [];
-let players: any[] = [];
-let currentDirection: string = "";
+let remotePlayer: any = null;
+let localPlayer: Player | null = null;
 let isReady = false;
-const oppositeDir: Record<string, string> = {
+let gameStarted = false;
+const opponents: Record<string, string> = {
   up: "down",
   down: "up",
   left: "right",
@@ -143,8 +374,7 @@ async function openHistoryModal() {
 function updatePlayerIdText() {
   if (!playerIdText) return;
   const displayId = playerId ? playerId.substring(0, 5) : "connecting...";
-  const currentPlayer = players.find((player) => player._id === playerId);
-  const color = currentPlayer?._color || "#eef2f7";
+  const color = localPlayer?.color || "#eef2f7";
   playerIdText.textContent = playerId
     ? `Player ID: ${displayId}`
     : "Player ID: connecting...";
@@ -267,10 +497,14 @@ function drawApples() {
 }
 
 function drawPlayers() {
-  players.forEach((player) => {
+  const playersToDisplay = [];
+  if (localPlayer) playersToDisplay.push(localPlayer);
+  if (remotePlayer) playersToDisplay.push(remotePlayer);
+  
+  playersToDisplay.forEach((player) => {
     if (!player.body || player.body.length === 0) return;
 
-    const color = player._color || "blue";
+    const color = player._color || player.color || "blue";
     const radius = SETTINGS.CELL_SIZE / 2 - 5;
 
     player.body.forEach((segment: any, idx: number) => {
@@ -296,7 +530,7 @@ function drawPlayers() {
       }
 
       if (idx === 0) {
-        drawEyes(segment.x, segment.y, player.direction);
+        drawEyes(segment.x, segment.y, player._direction || player.direction);
       }
     });
   });
@@ -334,46 +568,50 @@ function updateScoreboard() {
   if (!scoreboard) return;
   scoreboard.innerHTML = "";
 
-  if (players.length === 0) {
+  if (!localPlayer && !remotePlayer) {
     const li = document.createElement("li");
     li.textContent = "Waiting for players...";
     scoreboard.appendChild(li);
     return;
   }
 
-  players.forEach((player) => {
+  [localPlayer, remotePlayer].forEach((player) => {
+    if (!player) return;
     const li = document.createElement("li");
-    li.style.color = player._color || "blue";
-    const readyLabel = player.isReady ? "Ready" : "Not ready";
+    li.style.color = player._color || player.color || "blue";
     const aliveLabel = player.isAlive ? "Alive" : "Dead";
-    const speedLabel = player.speed ? `Speed: ${player.speed}` : "Speed: 1";
-    li.textContent = `Player: ${player._id.substring(0, 5)} (Length: ${player.length}) - ${readyLabel} - ${aliveLabel} - ${speedLabel}`;
+    const speedLabel = player._speed ? `Speed: ${player._speed}` : player.speed ? `Speed: ${player.speed}` : "Speed: 1";
+    li.textContent = `Player: ${player.id?.substring(0, 5) || playerId?.substring(0, 5)} (Length: ${player.length}) - ${aliveLabel} - ${speedLabel}`;
     scoreboard.appendChild(li);
   });
 }
 
-const syncPlayerData = (data: any[]) => {
-  players = data.map((p) => ({
-    _id: p._id || p.id,
-    _color: p._color || p.color,
-    pos: p._pos || p.pos,
-    body: p._body || p.body,
-    length: p._length || p.length,
-    speed: p._speed || p.speed || 1,
-    direction: p._direction || p.direction,
-    isReady: p._isReady || p.isReady || false,
-    isAlive: p.isAlive,
-  }));
-  updatePlayerIdText();
-};
-
-socket.on("send_player_data", syncPlayerData);
-
-socket.on("player_moved", syncPlayerData);
-
 socket.on("connect", () => {
   playerId = socket.id;
   updatePlayerIdText();
+});
+
+socket.on("player_moved", (playerStates: any[]) => {
+  playerStates.forEach((state) => {
+    if (state.id === playerId) {
+      // Initialize localPlayer on first update if not exists
+      if (!localPlayer) {
+        localPlayer = new Player(
+          state.id,
+          state.color,
+          state.pos,
+          state.length,
+        );
+        localPlayer.direction = state.direction;
+        // Restore body
+        localPlayer["_body"] = state.body;
+        localPlayer["_speed"] = state.speed;
+      }
+    } else {
+      // Store remote player
+      remotePlayer = state;
+    }
+  });
 });
 
 socket.on("send_apple_data", (data: any) => {
@@ -381,6 +619,7 @@ socket.on("send_apple_data", (data: any) => {
 });
 
 socket.on("game_started", () => {
+  gameStarted = true;
   if (statusText) {
     statusText.textContent = "Game started!";
   }
@@ -392,6 +631,7 @@ socket.on("game_started", () => {
 });
 
 socket.on("game_over", (data: { winnerId: string | null }) => {
+  gameStarted = false;
   const isWinner = data.winnerId === playerId;
   const isDraw = data.winnerId === null;
   showGameOver(isDraw ? null : isWinner);
@@ -407,36 +647,65 @@ function gameLoop() {
 
 gameLoop();
 
+// Game update loop - runs at TICK_RATE and handles local movement
 setInterval(() => {
-  const me = players.find((p) => p._id === playerId);
-  if (!me || !me.pos || apples.length === 0) return;
+  if (!gameStarted || !localPlayer || apples.length === 0) return;
 
+  // Find closest apple
   let closestApple = apples[0];
   let bestDist = Infinity;
-
   apples.forEach((a) => {
-    const d = Math.hypot(me.pos.x - a.pos.x, me.pos.y - a.pos.y);
+    const d = Math.hypot(localPlayer!.pos.x - a.pos.x, localPlayer!.pos.y - a.pos.y);
     if (d < bestDist) {
       bestDist = d;
       closestApple = a;
     }
   });
 
-  let nextDir = currentDirection;
-  const dx = closestApple.pos.x - me.pos.x;
-  const dy = closestApple.pos.y - me.pos.y;
+  // Get all obstacles (remote player body)
+  const obstacles = remotePlayer?.body || [];
 
-  if (Math.abs(dx) > Math.abs(dy)) {
-    nextDir = dx > 0 ? "right" : "left";
-  } else {
-    nextDir = dy > 0 ? "down" : "up";
+  // Use pathfinding to find best direction
+  const pathDirection = findPathToTarget(
+    localPlayer.pos,
+    closestApple.pos,
+    SETTINGS.BOARD_WIDTH,
+    SETTINGS.BOARD_HEIGHT,
+    SETTINGS.CELL_SIZE,
+    obstacles,
+    localPlayer.direction
+  );
+
+  if (pathDirection && pathDirection !== opponents[localPlayer.direction]) {
+    localPlayer.direction = pathDirection;
   }
 
-  if (
-    nextDir !== currentDirection &&
-    nextDir !== oppositeDir[currentDirection]
-  ) {
-    currentDirection = nextDir;
-    socket.emit("move_player", { direction: currentDirection });
+  // Move the player
+  let dx = 0, dy = 0;
+  switch (localPlayer.direction) {
+    case "up":
+      dy = -SETTINGS.CELL_SIZE;
+      break;
+    case "down":
+      dy = SETTINGS.CELL_SIZE;
+      break;
+    case "left":
+      dx = -SETTINGS.CELL_SIZE;
+      break;
+    case "right":
+      dx = SETTINGS.CELL_SIZE;
+      break;
   }
-}, 150);
+
+  localPlayer.movePlayer(dx, dy, SETTINGS.BOARD_WIDTH, SETTINGS.BOARD_HEIGHT);
+
+  // Send updated state to server
+  socket.emit("update_snake_state", {
+    pos: localPlayer.pos,
+    body: localPlayer.body,
+    length: localPlayer.length,
+    speed: localPlayer.speed,
+    direction: localPlayer.direction,
+    isAlive: localPlayer.isAlive(),
+  });
+}, 1000 / SETTINGS.TICK_RATE);
